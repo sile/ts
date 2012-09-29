@@ -8,6 +8,7 @@
   
   :serial t
   :components ((:file "package")
+               (:file "packet")
                (:file "parser/package")
                (:file "parser/parser")
                (:file "ts")))
