@@ -5,7 +5,8 @@
 
            ;; packet.lisp
            +SYNC_BYTE+
-           
+           get-packet-type
+
            ;;; ts-header
            ts-header
            make-ts-header
@@ -25,7 +26,25 @@
            ts-header-scrambling-control
            ts-header-adaptation-field-exist
            ts-header-continuity-counter
+
+           ;; payload
+           payload-data  ; TODO: delete
+           payload-unknown
+           make-payload-unknown
+           payload-unknown-data
            
+           ;;; pat
+           payload-pat
+           make-payload-pat
+           
+           ;;; packet
+           packet
+           make-packet
+           adaptation-field
+           payload
+           packet-ts-header
+           packet-adaptation-field
+           packet-payload
            ))
 (in-package :ts)
   
