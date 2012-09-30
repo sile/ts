@@ -49,6 +49,11 @@
            payload-pes
            make-payload-pes
 
+           payload-sdt
+           make-payload-sdt
+           payload-bat
+           make-payload-bat
+
            ;; adaptation-field
            adaptation-field
            make-adaptation-field

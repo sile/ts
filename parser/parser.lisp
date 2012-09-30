@@ -181,6 +181,71 @@
            )
         (loop FOR i FROM count BELOW rest-count DO (read-byte stream))))))
 
+(defun parse-si-sdt (pointer-field table-id stream rest-count)
+  (let ((count 0)
+        (byte 0)
+        (section-length 0)
+        (loop-length 0))
+    (flet ((next-byte () (incf count) (setf byte (read-byte stream))))
+      (prog1
+          (ts:make-payload-sdt 
+           :pointer-field  pointer-field
+           :table-id       table-id
+           :section-syntax-indicator (ldb (byte 1 7) (next-byte))
+           :reserved1      (ldb (byte 1 6) byte)
+           :reserved2      (ldb (byte 2 4) byte)
+           :section-length (setf section-length
+                                 (+ (ash (ldb (byte 4 0) byte) 8)
+                                    (next-byte)))
+           :transport-stream-id (+ (ash (next-byte) 8)
+                                   (next-byte))
+           :reserved3      (ldb (byte 2 6) (next-byte))
+           :version-number (ldb (byte 5 1) byte)
+           :current/next-indicator (ldb (byte 1 0) byte)
+           :section-number (next-byte)
+           :last-section-number (next-byte)
+           :original-network-id (+ (ash (next-byte) 8) (next-byte))
+           :reserved4      (next-byte)
+           :service-infos (loop WHILE (< count (- section-length 4))
+                               COLLECT
+                               (list (+ (ash (next-byte) 8) (next-byte)) ; service-id
+                                     (ldb (byte 3 5) (next-byte))        ; reserved
+                                     (ldb (byte 3 2) byte)    ; EIT-Company-Definition-Flag
+                                     (ldb (byte 1 1) byte)    ; EIT-schedule-flag
+                                     (ldb (byte 1 0) byte)    ; EIT-present-following-flag
+                                     (ldb (byte 3 5) (next-byte)) ; Running status
+                                     (ldb (byte 1 4) byte)        ; Free CA mode
+                                     (setf loop-length (+ (ash (ldb (byte 4 0) byte) 8)
+                                                          (next-byte))) ; Descriptors loop length
+                                     (loop REPEAT loop-length COLLECT (next-byte)) ; Descriptors
+                                     ))
+                                          
+           :crc32   (+ (ash (next-byte) 24)
+                       (ash (next-byte) 16)
+                       (ash (next-byte)  8)
+                       (next-byte))
+           )
+        (loop FOR i FROM count BELOW rest-count DO (read-byte stream))))))
+
+(defun parse-si-bat (pointer-field table-id stream rest-count)
+  ;; TODO:
+  (prog1
+      (ts:make-payload-bat :pointer-field pointer-field
+                           :table-id table-id)
+    (loop FOR i FROM 0 BELOW rest-count DO (read-byte stream))))
+
+(defun parse-si-sdt/bat (header stream rest-count)
+  (let ((count 0)
+        (byte 0))
+    (flet ((next-byte () (incf count) (setf byte (read-byte stream))))
+      (let ((pointer-field (and (= 1 (ts:ts-header-payload-unit-start-indicator header))
+                                (next-byte)))
+            (table-id (next-byte)))
+        (ecase table-id
+          ((#x42 #x46) (parse-si-sdt pointer-field table-id stream (- rest-count count)))
+          ((#x4A)      (parse-si-bat pointer-field table-id stream (- rest-count count)))
+          )))))
+
 (defun parse-payload (header stream context rest-count)
   (ecase (ts:get-packet-type header (context-pmt-pids context)
                                     (context-pes-pids context))
@@ -194,6 +259,8 @@
                       DO
                       (pushnew pes-pid (context-pes-pids context)))
                 pmt))
+    (:si-sdt/bat (let ((sdt-or-bad (parse-si-sdt/bat header stream rest-count)))
+                   sdt-or-bad))
     (:pes (let ((pes (parse-pes stream rest-count)))
             pes))
     (:null 

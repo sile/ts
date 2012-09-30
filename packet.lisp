@@ -307,13 +307,45 @@ Stuffing Bytes           | 0xFF
 (defmethod print-object ((o payload-data) stream)
   (print-unreadable-object (o stream :type t)
     (format stream "~s ~a" :length (length (payload-data-data o)))))
+
+;; Service Description Table
+(defstruct (payload-sdt (:include payload))
+  (pointer-field            0 :type (or null (unsigned-byte 8)))
+  (table-id                 0 :type (unsigned-byte 8))  ; 0x42 or 0x46
+  (section-syntax-indicator 0 :type (unsigned-byte 1))
+  (reserved1                0 :type (unsigned-byte 1))
+  (reserved2                0 :type (unsigned-byte 2))  ; Always set to binary '11'
+  (section-length           0 :type (unsigned-byte 12))
+  (transport-stream-id      0 :type (unsigned-byte 16))
+  (reserved3                0 :type (unsigned-byte 2))
+  (version-number           0 :type (unsigned-byte 5))
+  (current/next-indicator   0 :type (unsigned-byte 1))
+  (section-number           0 :type (unsigned-byte 8))
+  (last-section-number      0 :type (unsigned-byte 8))
+  (original-network-id      0 :type (unsigned-byte 16))
+  (reserved4                0 :type (unsigned-byte 8))  ; '11111111'
+  
+  (service-infos            t :type list) ; (list (list service-id:16 reserved:3 EIT-company-definition-flag:3
+                                          ;             EIT-schedule-flag:1 EIT-present-following-flag:1
+                                          ;             Running-status:3 Free-CA-mode:1 Descriptors-loop-length:12
+                                          ;             Descriptors:8xN
+  (crc32                    0 :type (unsigned-byte 32))
+  )
+
+;; Bouquet Association Table
+(defstruct (payload-bat (:include payload))
+  ; TODO:
+  (pointer-field            0 :type (or null (unsigned-byte 8)))
+  (table-id                 0 :type (unsigned-byte 8))  ; 0x4A
+  )
   
 (defun get-packet-type (header &optional pmt-pids pes-pids)
   (if (= 0 (ts-header-payload-unit-start-indicator header))
       :data
   (case (ts-header-pid header)
-    (#x0000 :psi-pat)  ; Program-specific information: program association table
-    (#x1FFF :null)     ; Null packets
+    (#x0000 :psi-pat)    ; Program-specific information: program association table
+    (#x0011 :si-sdt/bat) 
+    (#x1FFF :null)       ; Null packets
     (otherwise 
      (cond ((member (ts-header-pid header) pmt-pids) :psi-pmt)
            ((member (ts-header-pid header) pes-pids) :pes)
