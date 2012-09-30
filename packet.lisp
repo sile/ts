@@ -103,9 +103,69 @@ CRC32                    |
 ----------------------------------------------------------------------------------------------------
 ")))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *pmt-document* (format nil "~
+[PMT: Program Map Table]
+----------------------------------------------------------------------------------------------------
+Pointer field            | Present if payload_unit_start_indicator bit is set in the TS header bytes. 
+                         | Generally 0x00 for PMT.
+----------------------------------------------------------------------------------------------------
+Table ID                 | Always 0x02 for PMT
+----------------------------------------------------------------------------------------------------
+Section syntax Indicator | Always 1
+----------------------------------------------------------------------------------------------------
+0                        | Always 0
+----------------------------------------------------------------------------------------------------
+Reserved                 | Always set to binary '11'
+----------------------------------------------------------------------------------------------------
+Section Length           | Number of programs listed below. First two bits always zero.
+----------------------------------------------------------------------------------------------------
+Program num              |
+----------------------------------------------------------------------------------------------------
+Reserved                 |
+----------------------------------------------------------------------------------------------------
+Version number           | Incremented by 1 mod 32 each time the table data changes
+----------------------------------------------------------------------------------------------------
+Current/Next Indicator   | If 1, this table is currently valid. If 0, this table will become valid next.
+----------------------------------------------------------------------------------------------------
+Section number           | Always 0x00
+----------------------------------------------------------------------------------------------------
+Last section number      | Always 0x00
+----------------------------------------------------------------------------------------------------
+Reserved                 |
+----------------------------------------------------------------------------------------------------
+PCR PID                  | PID of general timecode stream, or 0x1FFF
+----------------------------------------------------------------------------------------------------
+Reserved                 |
+----------------------------------------------------------------------------------------------------
+Program info length      | Sum size of following program descriptors. First two bits must be zero.
+----------------------------------------------------------------------------------------------------
+Program descriptor       |
+----------------------------------------------------------------------------------------------------
+===
+# Repeated N times depending on section length
+----------------------------------------------------------------------------------------------------
+stream type              |
+----------------------------------------------------------------------------------------------------
+Reserved                 | Always set to binary '111'
+----------------------------------------------------------------------------------------------------
+Elementary PID           |
+----------------------------------------------------------------------------------------------------
+Reserved                 |
+----------------------------------------------------------------------------------------------------
+ES Info length           | First two bits must be zero. Entire value may be zero
+----------------------------------------------------------------------------------------------------
+ES Descriptor            | If ES Info length is zero, this is omitted.
+----------------------------------------------------------------------------------------------------
+===
+----------------------------------------------------------------------------------------------------
+CRC32                    |
+----------------------------------------------------------------------------------------------------
+")))
+
+
 (defstruct payload)
 
-;; XXX: 名前は不適切: payloadではない
 (defstruct (payload-pat (:include payload)) #.*pat-document*
   (pointer-field            0 :type (or null (unsigned-byte 8)))
   (table-id                 0 :type (unsigned-byte  8)) ; always set to 0
@@ -122,23 +182,42 @@ CRC32                    |
   (pmt-map                  t :type list)  ; (list (list program-number reserved program-PID))
   (crc32                    0 :type (unsigned-byte 32)))
 
+(defstruct (payload-pmt (:include payload)) #.*pmt-document*
+  (pointer-field            0 :type (or null (unsigned-byte 8)))
+  (table-id                 0 :type (unsigned-byte 8))
+  (section-syntax-indicator 0 :type (unsigned-byte 1))
+  (zero                     0 :type (unsigned-byte 1))
+  (reserved1                0 :type (unsigned-byte 2)) ; always set to binary '11'
+  (section-length           0 :type (unsigned-byte 12)) 
+  (program-num              0 :type (unsigned-byte 16))
+  (reserved2                0 :type (unsigned-byte 2))
+  (version-number           0 :type (unsigned-byte 5))
+  (current/next-indicator   0 :type (unsigned-byte 1))
+  (section-number           0 :type (unsigned-byte 8)) ; always set to 0x00
+  (last-section-number      0 :type (unsigned-byte 8)) ; always set to 0x00
+  (reserved3                0 :type (unsigned-byte 3))
+  (pcr-pid                  0 :type (unsigned-byte 13))
+  (reserved4                0 :type (unsigned-byte 4))
+  (program-info-length      0 :type (unsigned-byte 12))
+  (program-descriptors      t :type list) ; (list (unsigned-byte 8)). length is (/ program-info-length 8)
+  (stream-infos             t :type list) ; (list (list stream-type reserved elementary-pid reserved 
+                                          ;             es-info-length es-descriptors))
+  (crc32                    0 :type (unsigned-byte 32)))
+
 (defstruct (payload-unknown (:include payload))
   (data t :type (array (unsigned-byte 8))))
 
 (defstruct (payload-null (:include payload)))
   
-(defun get-packet-type (header)
+(defun get-packet-type (header &optional pmt-pids)
   (case (ts-header-pid header)
     (#x0000 :psi-pat)  ; Program-specific information: program association table
     (#x1FFF :null)     ; Null packets
-    (otherwise :unknown))) ; TODO:
-    
+    (otherwise 
+     (cond ((member (ts-header-pid header) pmt-pids) :psi-pmt)
+           (t :unknown)))))
 
 (defstruct packet 
   (ts-header        t :type ts-header)
   adaptation-field
   (payload          t :type payload))
-
-  ;;(adaptation-field t :type (or null))
-  ;;(payload          t :type (or null))
-;;)

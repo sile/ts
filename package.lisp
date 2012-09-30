@@ -38,6 +38,10 @@
            ;;; pat
            payload-pat
            make-payload-pat
+
+           ;;; pmt
+           payload-pmt
+           make-payload-pmt
            
            ;;; packet
            packet
@@ -49,4 +53,3 @@
            packet-payload
            ))
 (in-package :ts)
-  
