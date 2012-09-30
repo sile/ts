@@ -58,6 +58,8 @@
 (defun parse-payload (header stream)
   (ecase (ts:get-packet-type header)
     (:psi-pat (parse-psi-pat header stream))
+    (:null (dotimes (i 184) (read-byte stream))
+           (ts:make-payload-null))
     (:unknown 
      (dotimes (i 184)
        (read-byte stream))

@@ -32,7 +32,9 @@
            payload-unknown
            make-payload-unknown
            payload-unknown-data
-           
+           make-payload-null
+           payload-null
+
            ;;; pat
            payload-pat
            make-payload-pat

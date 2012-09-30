@@ -3,6 +3,7 @@
 (defconstant +SYNC_BYTE+ #x47)
 
 (defconstant +PID_PAT+ 0)
+(defconstant +PID_NULL+ #x1FFF)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *ts-header-document* (format nil "~
@@ -124,9 +125,12 @@ CRC32                    |
 (defstruct (payload-unknown (:include payload))
   (data t :type (array (unsigned-byte 8))))
 
+(defstruct (payload-null (:include payload)))
+  
 (defun get-packet-type (header)
   (case (ts-header-pid header)
-    (#x00 :psi-pat)  ; Program-specific information: program association table
+    (#x0000 :psi-pat)  ; Program-specific information: program association table
+    (#x1FFF :null)     ; Null packets
     (otherwise :unknown))) ; TODO:
     
 
