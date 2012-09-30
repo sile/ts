@@ -167,6 +167,60 @@ CRC32                    |
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *pes-document* (format nil "~
 [PES: Packetized Elementary Stream]
+----------------------------------------------------------------------------------------------------
+Packet start code prefix | 0x000001
+----------------------------------------------------------------------------------------------------
+Stream id                | Examples: Audio streams (0xC0-0xDF), Video streams (0xE0-0xEF)
+----------------------------------------------------------------------------------------------------
+PES Packet length        | Can be zero. If the PES packet length is set to zero, 
+                         | the PES packet can be of any length.
+                         | A value of zero for the PES packet length can be used only when 
+                         | the PES packet payload is a video elementary stream.
+----------------------------------------------------------------------------------------------------
+Optional PES header      | not present in case of Padding stream & Private stream 2 (navigation data)
+----------------------------------------------------------------------------------------------------
+Stuffing bytes           |
+----------------------------------------------------------------------------------------------------
+Data                     | See elementary stream. In the case of private streams the first byte of 
+                         | the payload is the sub-stream number.
+----------------------------------------------------------------------------------------------------
+
+==============
+[Optional PES header]
+----------------------------------------------------------------------------------------------------
+Marker bits              | 10 binary or 0x2 hex
+----------------------------------------------------------------------------------------------------
+Scrambling control       | 00 implies not scrambled
+----------------------------------------------------------------------------------------------------
+priority                 | 
+----------------------------------------------------------------------------------------------------
+Data alignment indicator | 1 indicates that the PES packet header is immediately followed by 
+                         | the video start code or audio syncword
+----------------------------------------------------------------------------------------------------
+Copyright                | 1 implies copyrighted
+----------------------------------------------------------------------------------------------------
+Original or Copy         | 1 implies original
+----------------------------------------------------------------------------------------------------
+PTS DTS indicator        | 11 = both present, 10 = only PTS
+----------------------------------------------------------------------------------------------------
+ESCR flag                |
+----------------------------------------------------------------------------------------------------
+ES rate flag             |
+----------------------------------------------------------------------------------------------------
+DSM trick mode flag      |
+----------------------------------------------------------------------------------------------------
+Additional copy info flag|
+----------------------------------------------------------------------------------------------------
+CRC flag                 |
+----------------------------------------------------------------------------------------------------
+extension flag           |
+----------------------------------------------------------------------------------------------------
+PES header length        | gives the length of the remainder of the PES header
+----------------------------------------------------------------------------------------------------
+Optional fields          | presence is determined by flag bits above
+----------------------------------------------------------------------------------------------------
+Stuffing Bytes           | 0xFF
+----------------------------------------------------------------------------------------------------
 ")))
 
 (defstruct payload)
@@ -210,20 +264,60 @@ CRC32                    |
   (crc32                    0 :type (unsigned-byte 32)))
 
 (defstruct (payload-pes (:include payload)) #.*pes-document*
+  (packet-start-prefix-code 0 :type (unsigned-byte 24))
+  (stream-id                0 :type (unsigned-byte 8))
+  (pes-packet-length        0 :type (unsigned-byte 16))
+  
+  (marker-bits              0 :type (unsigned-byte 2))
+  (scrambling-control       0 :type (unsigned-byte 2))
+  (priority                 0 :type (unsigned-byte 1))
+  (data-alignment-indicator 0 :type (unsigned-byte 1))
+  (copyright                0 :type (unsigned-byte 1))
+  (original-or-copy         0 :type (unsigned-byte 1))
+  (pts-dts-indicator        0 :type (unsigned-byte 2))
+  (escr-flag                0 :type (unsigned-byte 1))
+  (es-rate-flag             0 :type (unsigned-byte 1))
+  (dsm-trick-mode-flag      0 :type (unsigned-byte 1))
+  (additional-copy-into-flag 0 :type (unsigned-byte 1))
+  (crc-flag                 0 :type (unsigned-byte 1))
+  (extension-flag           0 :type (unsigned-byte 1))
+  (pes-header-length        0 :type (unsigned-byte 8))
+  
+  (pts                      0 :type (or null (unsigned-byte 34)))
+  (dts                      0 :type (or null (unsigned-byte 34)))
+  (escr                     0 :type (or null (unsigned-byte 48)))
+  (es                       0 :type (or null (unsigned-byte 24)))
+  (dsm-trick-mode           0 :type (or null (unsigned-byte 8)))
+  (additional-copy-info     0 :type (or null (unsigned-byte 8)))
+  (pes-crc                  0 :type (or null (unsigned-byte 16)))
+  
+  ;; pes-extension
+
+  (stuffing-bytes           t :type list)
   )
 
 (defstruct (payload-unknown (:include payload))
   (data t :type (array (unsigned-byte 8))))
 
 (defstruct (payload-null (:include payload)))
+
+(defstruct (payload-data (:include payload))
+  (data t :type (array (unsigned-byte 8))))
+
+(defmethod print-object ((o payload-data) stream)
+  (print-unreadable-object (o stream :type t)
+    (format stream "~s ~a" :length (length (payload-data-data o)))))
   
-(defun get-packet-type (header &optional pmt-pids)
+(defun get-packet-type (header &optional pmt-pids pes-pids)
+  (if (= 0 (ts-header-payload-unit-start-indicator header))
+      :data
   (case (ts-header-pid header)
     (#x0000 :psi-pat)  ; Program-specific information: program association table
     (#x1FFF :null)     ; Null packets
     (otherwise 
      (cond ((member (ts-header-pid header) pmt-pids) :psi-pmt)
-           (t :unknown)))))
+           ((member (ts-header-pid header) pes-pids) :pes)
+           (t :unknown))))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *adaptation-field-document* (format nil "~
