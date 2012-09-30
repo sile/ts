@@ -3,6 +3,7 @@
 (defconstant +SYNC_BYTE+ #x47)
 
 (defconstant +PID_PAT+ 0)
+(defconstant +PID_CAT+ 1) ; TODO: Conditional Access Table
 (defconstant +PID_NULL+ #x1FFF)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -163,6 +164,10 @@ CRC32                    |
 ----------------------------------------------------------------------------------------------------
 ")))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *pes-document* (format nil "~
+[PES: Packetized Elementary Stream]
+")))
 
 (defstruct payload)
 
@@ -204,6 +209,9 @@ CRC32                    |
                                           ;             es-info-length es-descriptors))
   (crc32                    0 :type (unsigned-byte 32)))
 
+(defstruct (payload-pes (:include payload)) #.*pes-document*
+  )
+
 (defstruct (payload-unknown (:include payload))
   (data t :type (array (unsigned-byte 8))))
 
@@ -217,7 +225,59 @@ CRC32                    |
      (cond ((member (ts-header-pid header) pmt-pids) :psi-pmt)
            (t :unknown)))))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *adaptation-field-document* (format nil "~
+[Adaptation Field]
+----------------------------------------------------------------------------------------------------
+Adaptation Field Length              | Number of bytes in the adaptation field immediately following this byte.
+----------------------------------------------------------------------------------------------------
+Discontinuity indicator              | Set to 1 if current TS packet is in a discontinuity state with respect 
+                                     | to either the continuity counter or the program clock reference.
+----------------------------------------------------------------------------------------------------
+Random Access indicator              | Set to 1 if the PES packet in this TS packet starts a video/audio sequence
+----------------------------------------------------------------------------------------------------
+Elementary stream priority indicator | 1 = higher priority
+----------------------------------------------------------------------------------------------------
+PCR flag                             | 1 means adaptation field does contain a PCR field
+----------------------------------------------------------------------------------------------------
+OPCR flag                            | 1 means adaptation field does contain an OPCR field
+----------------------------------------------------------------------------------------------------
+Splicing point flag                  | 1 means presence of splice countdown field in adaptation field
+----------------------------------------------------------------------------------------------------
+Transport private data flag          | 1 means presence of private data bytes in adaptation field
+----------------------------------------------------------------------------------------------------
+Adaptation field extension flag      | 1 means presence of adaptation field extension
+----------------------------------------------------------------------------------------------------
+# Below fields are optional          | Depends on flags
+----------------------------------------------------------------------------------------------------
+PCR                                  | Program clock reference, stored in 6 octets in big-endian as 33 bits base, 
+                                     | 6 bits padding, 9 bits extension.
+----------------------------------------------------------------------------------------------------
+OPCR                                 | Original Program clock reference. Helps when one TS is copied into another
+----------------------------------------------------------------------------------------------------
+Splice countdown                     | Indicates how many TS packets from this one a splicing point occurs 
+                                     | (may be negative)
+----------------------------------------------------------------------------------------------------
+stuffing bytes                       |
+----------------------------------------------------------------------------------------------------
+")))
+
+(defstruct adaptation-field 
+  (length                          0 :type (unsigned-byte 8))
+  (discontinuity-indicator         0 :type (unsigned-byte 1))
+  (random-access-indicator         0 :type (unsigned-byte 1))
+  (es-priority-indicator           0 :type (unsigned-byte 1))
+  (pcr-flag                        0 :type (unsigned-byte 1))
+  (opcr-flag                       0 :type (unsigned-byte 1))
+  (splicing-point-flag             0 :type (unsigned-byte 1))
+  (transport-private-data-flag     0 :type (unsigned-byte 1))
+  (adaptation-field-extension-flag 0 :type (unsigned-byte 1))
+  (pcr                             0 :type (or null (unsigned-byte 48)))
+  (opcr                            0 :type (or null (unsigned-byte 48)))
+  (splice-countdown                0 :type (or null (unsigned-byte 8)))
+  (stuffing-bytes                  0 :type (or null list)))
+
 (defstruct packet 
   (ts-header        t :type ts-header)
-  adaptation-field
-  (payload          t :type payload))
+  (adaptation-field t :type (or null adaptation-field))
+  (payload          t :type (or null payload)))

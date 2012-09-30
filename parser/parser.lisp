@@ -1,7 +1,8 @@
 (in-package :ts.parser)
 
 (defstruct context
-  pmt-pids)
+  pmt-pids
+  pes-pids)
 
 (defun init-context () (make-context))
 
@@ -26,7 +27,7 @@
      :adaptation-field-exist       (ldb (byte 2 4) byte3)
      :continuity-counter           (ldb (byte 4 0) byte3))))
 
-(defun parse-psi-pat (header stream &aux (count 0) (byte 0) (section-length 0))
+(defun parse-psi-pat (header stream rest-count &aux (count 0) (byte 0) (section-length 0))
   (flet ((next-byte () (incf count) (setf byte (read-byte stream))))
     (prog1
     (ts:make-payload-pat
@@ -58,9 +59,9 @@
                  (ash (next-byte)  8)
                  (next-byte)))
 
-    (loop FOR i FROM count BELOW 184 DO (read-byte stream))))) ; XXX:
+    (loop FOR i FROM count BELOW rest-count DO (read-byte stream))))) ; XXX:
 
-(defun parse-psi-pmt (header stream)
+(defun parse-psi-pmt (header stream rest-count)
   (let ((count 0)
         (byte 0)
         (section-length 0)
@@ -111,30 +112,70 @@
                       (next-byte))
           
           )
-        (loop FOR i FROM count BELOW 184 DO (read-byte stream))))))
+        (loop FOR i FROM count BELOW rest-count DO (read-byte stream))))))
 
-(defun parse-payload (header stream context)
+(defun parse-payload (header stream context rest-count)
   (ecase (ts:get-packet-type header (context-pmt-pids context))
-    (:psi-pat (let ((pat (parse-psi-pat header stream)))
+    (:psi-pat (let ((pat (parse-psi-pat header stream rest-count)))
                 (loop FOR (_ __ program-pid) IN (ts::payload-pat-pmt-map pat)
                       DO
                       (pushnew program-pid (context-pmt-pids context)))
                 pat))
-    (:psi-pmt (let ((pmt (parse-psi-pmt header stream)))
+    (:psi-pmt (let ((pmt (parse-psi-pmt header stream rest-count)))
+                (loop FOR (_1 _2 pes-pid _3 _4 _5 _6) IN (ts::payload-pmt-stream-infos pmt)
+                      DO
+                      (pushnew pes-pid (context-pes-pids context)))
                 pmt))
     (:null 
-     (dotimes (i 184) (read-byte stream))
+     (dotimes (i rest-count) (read-byte stream))
      (ts:make-payload-null))
     (:unknown 
-     (dotimes (i 184)
+     (dotimes (i rest-count)
        (read-byte stream))
      (ts:make-payload-unknown :data (sb-ext:string-to-octets "")))))
 
+(defun parse-adaptation-field (stream)
+  (let ((length 0)
+        (count 0)
+        (byte 0)
+        (f1 0)
+        (f2 0)
+        (f3 0)
+        (f4 0)
+        (f5 0))
+    (flet ((next-byte () (incf count) (setf byte (read-byte stream))))
+      (values
+        (ts:make-adaptation-field 
+         :length                  (setf length (next-byte))
+         :discontinuity-indicator (ldb (byte 1 7) (next-byte))
+         :random-access-indicator (ldb (byte 1 6) byte)
+         :es-priority-indicator   (ldb (byte 1 5) byte)
+         :pcr-flag                (setf f1 (ldb (byte 1 4) byte))
+         :opcr-flag               (setf f2 (ldb (byte 1 3) byte))
+         :splicing-point-flag     (setf f3 (ldb (byte 1 2) byte))
+         :transport-private-data-flag     (setf f4 (ldb (byte 1 1) byte))
+         :adaptation-field-extension-flag (setf f5 (ldb (byte 1 0) byte))
+         :pcr              (when (plusp f1) (loop FOR i FROM 5 DOWNTO 0 SUM (ash (next-byte) (* i 8))))
+         :opcr             (when (plusp f2) (loop FOR i FROM 5 DOWNTO 0 SUM (ash (next-byte) (* i 8))))
+         :splice-countdown (when (plusp f3) (next-byte))
+         :stuffing-bytes (list (when (plusp f4)
+                                 (loop REPEAT (next-byte) COLLECT (next-byte)))
+                               (when (plusp f5)
+                                 (loop REPEAT (next-byte) COLLECT (next-byte)))
+                               (loop FOR i FROM count TO length COLLECT (next-byte))))
+        count))))
+
 (defun parse-one (stream context)
-  (let* ((header (parse-ts-header stream))
-         (payload (parse-payload header stream context)))
-    (ts:make-packet :ts-header header
-                    :payload payload)))
+  (let ((header (parse-ts-header stream)))
+    (multiple-value-bind (adaptation-field read-count)
+                         (if (ldb-test (byte 1 1) (ts:ts-header-adaptation-field-exist header))
+                             (parse-adaptation-field stream)
+                           (values nil 0))
+      (let ((payload (when (ldb-test (byte 1 0) (ts:ts-header-adaptation-field-exist header))
+                       (parse-payload header stream context (- 188 4 read-count)))))
+        (ts:make-packet :ts-header header
+                        :adaptation-field adaptation-field
+                        :payload payload)))))
 
 (defun parse (stream &key (context (init-context)))
   (values

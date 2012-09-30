@@ -42,6 +42,14 @@
            ;;; pmt
            payload-pmt
            make-payload-pmt
+
+           ;;; pes
+           payload-pes
+           make-payload-pes
+
+           ;; adaptation-field
+           adaptation-field
+           make-adaptation-field
            
            ;;; packet
            packet
