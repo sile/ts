@@ -278,7 +278,7 @@ Stuffing Bytes           | 0xFF
   (escr-flag                0 :type (unsigned-byte 1))
   (es-rate-flag             0 :type (unsigned-byte 1))
   (dsm-trick-mode-flag      0 :type (unsigned-byte 1))
-  (additional-copy-into-flag 0 :type (unsigned-byte 1))
+  (additional-copy-info-flag 0 :type (unsigned-byte 1))
   (crc-flag                 0 :type (unsigned-byte 1))
   (extension-flag           0 :type (unsigned-byte 1))
   (pes-header-length        0 :type (unsigned-byte 8))

@@ -162,7 +162,7 @@
            :escr-flag          (setf f2 (ldb (byte 1 5) byte))
            :es-rate-flag       (setf f3 (ldb (byte 1 4) byte))
            :dsm-trick-mode-flag(setf f4 (ldb (byte 1 3) byte))
-           :additional-copy-into-flag (setf f5 (ldb (byte 1 2) byte))
+           :additional-copy-info-flag (setf f5 (ldb (byte 1 2) byte))
            :crc-flag           (setf f6 (ldb (byte 1 1) byte))
            :extension-flag     (setf f7 (ldb (byte 1 0) byte))
            :pes-header-length  (prog1 (setf header-length (next-byte))
