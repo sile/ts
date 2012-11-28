@@ -14,8 +14,8 @@
   (total 0)
   (packet-header-size 0)
   (adpt-field-size 0)
-  (pes-header-size 0))
-  
+  (pes-header-size 0)
+  (non-media-data-size 0))
 
 (defun count-size (ts-file-path)
   (with-open-file (in ts-file-path :element-type '(unsigned-byte 8))
@@ -28,26 +28,31 @@
           (unless stat
             (setf (gethash pid stat-map) (setf stat (make-size-stat :pid pid))))
           
-          (with-slots (total packet-header-size adpt-field-size pes-header-size) stat
+          (with-slots (total packet-header-size adpt-field-size pes-header-size non-media-data-size) stat
             (incf total +TS_PACKET_SIZE+)
             (incf packet-header-size +TS_PACKET_HEADER_SIZE+)
             (when adpt-field
               (incf adpt-field-size (adaptation-field-size adpt-field)))
             (when (typep payload 'ts:payload-pes)
               (incf pes-header-size (pes-header-size payload)))
+            (when (not (or (typep payload 'ts:payload-pes)
+                           (typep payload 'ts:payload-data)))
+              (incf non-media-data-size (- +TS_PACKET_SIZE+ +TS_PACKET_HEADER_SIZE+ 
+                                           (if adpt-field (adaptation-field-size adpt-field) 0))))
             )))
       stat-map)))
 
 (defun show-stat (stat-map)
   (flet ((show (name pid stat)
-           (with-slots (total packet-header-size adpt-field-size pes-header-size) stat
-             (let ((data-size (- total packet-header-size adpt-field-size pes-header-size)))
+           (with-slots (total packet-header-size adpt-field-size pes-header-size non-media-data-size) stat
+             (let ((data-size (- total packet-header-size adpt-field-size pes-header-size non-media-data-size)))
                (format t "~&; [~a(~a)]~%" name pid)
                (format t ";   total:         ~a KB~%" (round (/ total 1024)))
                (format t ";   packet-header: ~a KB (~a %)~%" (round (/ packet-header-size 1024)) (round (* packet-header-size 100) total))
                (format t ";   adpt-field:    ~a KB (~a %)~%" (round (/ adpt-field-size 1024)) (round (* adpt-field-size 100) total))
                (format t ";   pes-header:    ~a KB (~a %)~%" (round (/ pes-header-size 1024)) (round (* pes-header-size 100) total))
-               (format t ";   data:          ~a KB (~a %)~%" (round (/ data-size 1024)) (round (* data-size 100) total))
+               (format t ";   meta-data:     ~a KB (~a %)~%" (round (/ non-media-data-size 1024)) (round (* non-media-data-size 100) total))
+               (format t ";   media-data:    ~a KB (~a %)~%" (round (/ data-size 1024)) (round (* data-size 100) total))
                (format t "; ~%")))))
                
     (let ((whole (make-size-stat :pid :total)))
@@ -61,11 +66,12 @@
                        (257  :pes-audio)
                        (otherwise :unknown))))
            (show name pid stat)
-           (with-slots (total packet-header-size adpt-field-size pes-header-size) stat
+           (with-slots (total packet-header-size adpt-field-size pes-header-size non-media-data-size) stat
              (incf (size-stat-total whole) total)
              (incf (size-stat-packet-header-size whole) packet-header-size)
              (incf (size-stat-adpt-field-size whole) adpt-field-size)
-             (incf (size-stat-pes-header-size whole) pes-header-size))
+             (incf (size-stat-pes-header-size whole) pes-header-size)
+             (incf (size-stat-non-media-data-size whole) non-media-data-size))
            ))
        stat-map)
       (show "TOTAL" "none" whole)
