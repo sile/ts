@@ -325,3 +325,12 @@
          COLLECT
          (parse-one stream context))
    context))
+
+(defmacro do-each-packet ((packet stream) &body body)
+  (let ((in (gensym))
+        (context (gensym)))
+    `(loop WITH ,in = ,stream
+           WITH ,context = (init-context)
+           WHILE (listen ,in)
+           FOR ,packet = (parse-one ,in ,context)
+           DO (locally ,@body))))

@@ -2,6 +2,7 @@
   (:use :common-lisp)
   (:export parse
            parse-file
+           do-each-packet
 
            ;; packet.lisp
            +SYNC_BYTE+
